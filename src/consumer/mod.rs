@@ -91,7 +91,7 @@ pub const DEFAULT_FALLBACK_OFFSET: FetchOffset = FetchOffset::Latest;
 #[derive(Debug)]
 pub struct Consumer {
     client: KafkaClient,
-    state: state::State,
+    pub state: state::State,
     config: config::Config,
 }
 

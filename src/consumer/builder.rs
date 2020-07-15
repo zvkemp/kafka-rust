@@ -33,6 +33,7 @@ pub struct Builder {
     group_offset_storage: GroupOffsetStorage,
     conn_idle_timeout: Duration,
     client_id: Option<String>,
+    prefetched_offsets: Option<Vec<(String, i32, i64)>>,
 }
 
 // ~ public only to be shared inside the kafka crate; not supposed to
@@ -53,6 +54,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
         conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
         client_id: None,
+        prefetched_offsets: None,
     };
     if let Some(ref c) = b.client {
         b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -87,6 +89,12 @@ impl Builder {
     /// once, to assign a topic to the consumer.
     pub fn with_topic(mut self, topic: String) -> Builder {
         self.assignments.insert(topic, Vec::new());
+        self
+    }
+
+    pub fn with_prefetched_offsets(mut self, prefetched_offsets: Vec<(String, i32, i64)>) -> Builder {
+
+        self.prefetched_offsets = Some(prefetched_offsets);
         self
     }
 
@@ -249,7 +257,7 @@ impl Builder {
             fallback_offset: self.fallback_offset,
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
-        let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
+        let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments), self.prefetched_offsets));
         debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
         Ok(Consumer {
             client: client,

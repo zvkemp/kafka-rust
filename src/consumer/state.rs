@@ -80,6 +80,7 @@ impl State {
         client: &mut KafkaClient,
         config: &Config,
         assignments: Assignments,
+        prefetched_offsets: Option<Vec<(String, i32, i64)>>,
     ) -> Result<State> {
         let (consumed_offsets, fetch_offsets) = {
             let subscriptions = {
@@ -97,7 +98,7 @@ impl State {
                 },
             );
             let consumed =
-                try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
+                try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n, &prefetched_offsets));
 
             let fetch_next =
                 try!(load_fetch_states(client, config, &assignments, &subscriptions, &consumed, n));
@@ -201,13 +202,36 @@ fn load_consumed_offsets(
     assignments: &Assignments,
     subscriptions: &[Subscription],
     result_capacity: usize,
+    prefetched_offsets: &Option<Vec<(String, i32, i64)>>,
 ) -> Result<HashMap<TopicPartition, ConsumedOffset, PartitionHasher>> {
     assert!(!subscriptions.is_empty());
     // ~ pre-allocate the right size
     let mut offs = HashMap::with_capacity_and_hasher(result_capacity, PartitionHasher::default());
     // ~ no group, no persisted consumed offsets
     if group.is_empty() {
-        return Ok(offs);
+        if prefetched_offsets.is_some() {
+            prefetched_offsets.as_ref().map(|inner| {
+                for (topic, partition, offset) in inner {
+                    offs.insert(
+                        TopicPartition {
+                            topic_ref: assignments.topic_ref(&topic).expect("non-assigned topic"),
+                            partition: *partition,
+                        },
+
+                        ConsumedOffset {
+                            offset: offset - 1,
+                            dirty: false,
+                        },
+                    );
+
+                    println!("{} {} {}", topic, partition, offset);
+                }
+            });
+
+            return Ok(offs);
+        } else {
+            return Ok(offs);
+        }
     }
     // ~ otherwise try load them for the group
     let tpos = try!(client.fetch_group_offsets(
